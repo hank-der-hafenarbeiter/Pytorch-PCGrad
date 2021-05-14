@@ -47,18 +47,15 @@ class PCGrad():
 
     def _project_conflicting(self, grads, has_grads, shapes=None):
         shared = torch.stack(has_grads).prod(0).bool()
-        pc_grad, num_task = copy.deepcopy(grads), len(grads)
+        pc_grad, num_task = map(copy.deepcopy, grads), len(grads) # map is lazy it only copies when the particular item is needed
         for g_i in pc_grad:
             random.shuffle(grads)
             for g_j in grads:
                 g_i_g_j = torch.dot(g_i, g_j)
                 if g_i_g_j < 0:
                     g_i -= (g_i_g_j) * g_j / (g_j.norm()**2)
-        merged_grad = torch.zeros_like(grads[0]).to(grads[0].device)
-        merged_grad[shared] = torch.stack([g[shared]
-                                           for g in pc_grad]).mean(dim=0)
-        merged_grad[~shared] = torch.stack([g[~shared]
-                                            for g in pc_grad]).sum(dim=0)
+            merged_grad += g_i # sum up all parameters shared or not
+        merged_grad[shared] /= len(grads) # divide shared parameters by number of tasks to turn sum into mean for these (mean(x)=sum(x)/len(x))
         return merged_grad
 
     def _set_grad(self, grads):
